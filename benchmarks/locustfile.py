@@ -118,7 +118,17 @@ PROFILES = {
 # Default to medium if running locustfile.py directly without benchmark.sh.
 # -------------------------------------------------------------
 profile_name = os.environ.get("PROMPT_PROFILE", "medium")
-profile      = PROFILES[profile_name]
+
+# Guard: if PROMPT_PROFILE is set to an invalid value outside of benchmark.sh
+# (e.g. a typo when running Locust directly), fail here with a clear message
+# rather than a confusing KeyError traceback.
+if profile_name not in PROFILES:
+    raise ValueError(
+        f"Invalid PROMPT_PROFILE='{profile_name}'. "
+        f"Valid values are: {list(PROFILES.keys())}"
+    )
+
+profile = PROFILES[profile_name]
 
 SYSTEM_PROMPT = profile["system"]
 USER_MESSAGE  = profile["user"]
@@ -275,18 +285,24 @@ class VLLMUser(HttpUser):
             # TPOT — Time Per Output Token
             # Time spent after first token divided by remaining tokens.
             # Formula: (total_time - ttft) / (total_tokens - 1)
-            # Guard: needs at least 2 tokens to calculate.
+            # Guard: ttft is not None (first token was received)
+            #        and total_tokens > 1 (avoid division by zero).
             # -------------------------------------------------
-            tpot = (total_time - ttft) / (total_tokens - 1) if (ttft and total_tokens > 1) else 0
+            tpot = (total_time - ttft) / (total_tokens - 1) if (ttft is not None and total_tokens > 1) else 0
 
             # Tokens generated per second — raw GPU throughput.
             tokens_per_second = total_tokens / total_time if total_time > 0 else 0
 
+            # -------------------------------------------------
+            # ttft is None when no content tokens were received.
+            # Guard the format string — :.3f on None crashes.
+            # -------------------------------------------------
+            ttft_display = f"{ttft:.3f}s" if ttft is not None else "None"
             logger.debug(
                 f"Request complete — "
                 f"profile: {profile_name}, "
                 f"tokens: {total_tokens}, "
-                f"TTFT: {ttft:.3f}s, "
+                f"TTFT: {ttft_display}, "
                 f"TPOT: {tpot:.4f}s, "
                 f"tokens/sec: {tokens_per_second:.1f}, "
                 f"total_time: {total_time:.3f}s"
@@ -295,8 +311,10 @@ class VLLMUser(HttpUser):
             # -------------------------------------------------
             # Report TTFT as a custom Locust metric.
             # response_time must be in milliseconds.
+            # Use "is not None" not "if ttft" — ttft could be
+            # 0.0 on a very fast response which is falsy but valid.
             # -------------------------------------------------
-            if ttft:
+            if ttft is not None:
                 self.environment.events.request.fire(
                     request_type="TTFT",
                     name="time_to_first_token",
@@ -316,8 +334,13 @@ class VLLMUser(HttpUser):
                 )
 
             # -------------------------------------------------
-            # Mark request successful in Locust.
-            # Required because we used catch_response=True.
-            # Without this Locust marks every request as failed.
+            # Mark success or failure based on HTTP status code.
+            # catch_response=True means Locust waits for us to
+            # decide — we must call either success() or failure().
+            # Calling success() unconditionally hides real errors:
+            # a 503 (server overloaded) would show as 0% error rate.
             # -------------------------------------------------
-            response.success()
+            if response.status_code == 200:
+                response.success()
+            else:
+                response.failure(f"HTTP {response.status_code}")

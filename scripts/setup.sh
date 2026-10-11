@@ -27,13 +27,25 @@
 pip install vllm autoawq locust
 
 # -------------------------------------------------------------
-# step 2 - Login to HuggingFace 
+# Step 2 — Check HF_TOKEN then login to HuggingFace
 # HuggingFace requires authentication to download models.
 # $HF_TOKEN reads the token from the environment variable set
 # in RunPod settings — never hardcode the actual token here
 # or it will be visible on GitHub.
+#
+# -z checks if the variable is empty. If HF_TOKEN was not set
+# in RunPod environment settings, we stop here with a clear
+# error. Without this check, huggingface-cli gets an empty
+# token, fails with a confusing auth error, then the download
+# fails too — making it hard to know the root cause.
 # -------------------------------------------------------------
-huggingface-cli login --token $HF_TOKEN
+if [ -z "$HF_TOKEN" ]; then
+    echo "Error: HF_TOKEN environment variable is not set."
+    echo "Set it in RunPod → Settings → Environment Variables before running this script."
+    exit 1
+fi
+
+huggingface-cli login --token "$HF_TOKEN"
 
 # -------------------------------------------------------------
 # Step 3 — Download the model to the Network Volume

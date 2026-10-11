@@ -36,6 +36,14 @@
 #   Too high = KV cache pressure, latency spikes.
 #   Too low = GPU sits idle. Tune this in Phase 1 Step 4.
 #
+# --served-model-name qwen2.5-coder
+#   The name the API registers the model under.
+#   Without this, vLLM uses the folder path as the model name.
+#   locustfile.py sends {"model": "qwen2.5-coder"} in every
+#   request — if the names do not match, vLLM returns
+#   model-not-found on every request and all benchmarks fail.
+#   This flag makes the name match exactly.
+#
 # --port 8000
 #   Port the API listens on. All requests go to this port.
 # -------------------------------------------------------------
@@ -44,4 +52,5 @@ vllm serve /workspace/models/qwen2.5-coder \
   --gpu-memory-utilization 0.85 \
   --max-model-len 8192 \
   --max-num-seqs 32 \
+  --served-model-name qwen2.5-coder \
   --port 8000
