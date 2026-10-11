@@ -1,0 +1,114 @@
+#!/bin/bash
+# Shebang line — tells Linux to use bash to run this script.
+# Must always be line 1 with nothing above it.
+
+# =============================================================
+# benchmark.sh
+# Runs a Locust load test against the vLLM server.
+# Pass the number of concurrent users as an argument.
+#
+# HOW TO USE:
+#   bash scripts/benchmark.sh 1
+#   bash scripts/benchmark.sh 5
+#   bash scripts/benchmark.sh 10
+#   bash scripts/benchmark.sh 25
+#   bash scripts/benchmark.sh 50
+#
+# BEFORE RUNNING:
+#   serve.sh must already be running in another terminal.
+#   Results are saved to benchmarks/results/ as CSV files.
+# =============================================================
+
+# -------------------------------------------------------------
+# Check 1 — Was an argument provided at all?
+# $1 is the first argument passed to the script.
+# -z means "is empty" — if nothing was typed after benchmark.sh
+# show the usage message and exit with error code 1.
+# -------------------------------------------------------------
+if [ -z "$1" ]; then
+    echo "Error: No user count provided."
+    echo ""
+    echo "Usage:"
+    echo "  bash scripts/benchmark.sh 1"
+    echo "  bash scripts/benchmark.sh 5"
+    echo "  bash scripts/benchmark.sh 10"
+    echo "  bash scripts/benchmark.sh 25"
+    echo "  bash scripts/benchmark.sh 50"
+    exit 1
+fi
+
+
+# -------------------------------------------------------------
+# Check 2 — Is the argument actually a number?
+# =~ is a regex match operator.
+# ^[0-9]+$ means "only digits, nothing else".
+# The ! at the start means "if it does NOT match".
+# So if someone types "abc" or "10users" this catches it.
+# exit 1 stops the script with an error.
+# -------------------------------------------------------------
+if ! [[ "$1" =~ ^[0-9]+$ ]]; then
+    echo "Error: '$1' is not a valid number."
+    echo "Please provide a number. Example: bash scripts/benchmark.sh 25"
+    exit 1
+fi
+
+
+# -------------------------------------------------------------
+# Check 3 — Is it one of our defined test levels?
+# We only benchmark at 1, 5, 10, 25, 50 users — the five rows
+# in our benchmark table. Any other number is outside the
+# defined test matrix.
+# This is a WARNING not a hard error — during Phase 1 Step 4
+# tuning you might genuinely want to test at an unusual level
+# like 15 or 30 to understand behaviour between standard levels.
+# Press Enter to continue anyway or Ctrl+C to cancel.
+# -------------------------------------------------------------
+if [[ "$1" != "1" && "$1" != "5" && "$1" != "10" && "$1" != "25" && "$1" != "50" ]]; then
+    echo "Warning: $1 is not a standard test level."
+    echo "Standard benchmark levels are: 1, 5, 10, 25, 50"
+    echo ""
+    echo "Press Enter to continue anyway or Ctrl+C to cancel."
+    read
+fi
+
+# -------------------------------------------------------------
+# Run the Locust load test.
+#
+# -f benchmarks/locustfile.py
+#   The file that defines what one user does.
+#
+# --host http://localhost:8000
+#   The vLLM server address. All requests go here.
+#
+# --users $1
+#   Number of concurrent users — taken from your argument.
+#
+# --spawn-rate 1
+#   Adds 1 new user per second until all users are active.
+#   Realistic ramp-up — prevents all users hitting at once.
+#
+# --run-time 60s
+#   Runs the test for 60 seconds once all users are active.
+#   Enough time to collect stable numbers.
+#
+# --headless
+#   No browser UI — results print directly to terminal.
+#
+# --csv benchmarks/results/benchmark_$1users
+#   Saves results as CSV files automatically so every test
+#   run is recorded. File name includes the user count so
+#   you can tell runs apart. Example for 25 users:
+#   benchmarks/results/benchmark_25users_stats.csv
+# -------------------------------------------------------------
+echo "Starting load test with $1 concurrent users..."
+echo "Results will be saved to benchmarks/results/benchmark_$1users*.csv"
+echo ""
+
+locust -f benchmarks/locustfile.py \
+  --host http://localhost:8000 \
+  --users $1 \
+  --spawn-rate 1 \
+  --run-time 60s \
+  --headless \
+  --csv benchmarks/results/benchmark_$1users
+
