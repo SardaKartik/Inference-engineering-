@@ -272,6 +272,12 @@ class VLLMUser(HttpUser):
                     # Log the raw line so you know what broke the parser.
                     logger.error(f"JSON parse failed. Raw line: '{line}'")
                     continue
+                except KeyError:
+                    # vLLM returned valid JSON but without a "choices" key.
+                    # This happens on error responses e.g. {"detail": "Service Unavailable"}.
+                    # json.JSONDecodeError does not catch this — KeyError must be caught separately.
+                    logger.error(f"Unexpected response structure — no 'choices' key. Raw line: '{line}'")
+                    continue
 
             # -------------------------------------------------
             # Stream finished. Calculate final metrics.
@@ -324,7 +330,7 @@ class VLLMUser(HttpUser):
                 )
 
             # Report TPOT as a custom Locust metric.
-            if tpot:
+            if tpot > 0:
                 self.environment.events.request.fire(
                     request_type="TPOT",
                     name="time_per_output_token",

@@ -126,9 +126,14 @@ export PROMPT_PROFILE
 #   Adds 1 new user per second until all users are active.
 #   Realistic ramp-up — prevents all users hitting at once.
 #
-# --run-time 60s
-#   Runs the test for 60 seconds once all users are active.
-#   Enough time to collect stable numbers.
+# --run-time
+#   Total test duration including ramp-up.
+#   With --spawn-rate 1, ramp-up takes $1 seconds (one user/sec).
+#   Without accounting for this, at 50 users only 10 of the 60
+#   seconds run at full concurrency — making results incomparable
+#   across user counts.
+#   Fix: run-time = ramp-up ($1 seconds) + 60 seconds steady state.
+#   This ensures every run has 60 full seconds at peak concurrency.
 #
 # --headless
 #   No browser UI — results print directly to terminal.
@@ -138,7 +143,10 @@ export PROMPT_PROFILE
 #   do not overwrite each other.
 #   Example: benchmark_10users_long_stats.csv
 # -------------------------------------------------------------
+RUN_TIME=$(($1 + 60))
+
 echo "Starting load test: $1 concurrent users, '$PROMPT_PROFILE' prompt profile"
+echo "Ramp-up: $1s — Steady state: 60s — Total run time: ${RUN_TIME}s"
 echo "Results will be saved to benchmarks/results/benchmark_$1users_${PROMPT_PROFILE}*.csv"
 echo ""
 
@@ -146,7 +154,7 @@ locust -f benchmarks/locustfile.py \
   --host http://localhost:8000 \
   --users $1 \
   --spawn-rate 1 \
-  --run-time 60s \
+  --run-time ${RUN_TIME}s \
   --headless \
   --csv benchmarks/results/benchmark_$1users_$PROMPT_PROFILE
 
